@@ -1,4 +1,4 @@
-﻿# Roachagram.API# Roachagram.API
+﻿# Roachagram.API
 
 Roachagram.API is a modern web API built with .NET 9, designed to provide a robust and scalable backend for applications. This API serves as the backbone for managing and processing data for the Roachagram platform.
 
@@ -22,10 +22,32 @@ To run or contribute to this project, ensure you have the following installed:
 Follow these steps to set up the project locally:
 
 1. Clone the repository:
+	
+	    ```bash
+	    git clone https://github.com/your-username/Roachagram.API.git
+	    cd Roachagram.API
+	    ```
+	
 2. Restore dependencies:
+	
+	    ```bash
+	    dotnet restore
+	    ```
+	
 3. Configure the database connection string in `appsettings.json` or environment variables.
+	
 4. Build the project:
+	
+	    ```bash
+	    dotnet build
+	    ```
+	
 5. Run the application:
+	
+	    ```bash
+	    dotnet run
+	    ```
+
 6. Access the API at `http://localhost:5000` (or the configured port).
 
 ## 🗂️ Project Structure
