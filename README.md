@@ -46,7 +46,7 @@ Follow these steps to set up the project locally:
 	
 	    ```bash
 	    dotnet run
-	    ```:
+	    ```
 
 6. Access the API at `http://localhost:5000` (or the configured port).
 
