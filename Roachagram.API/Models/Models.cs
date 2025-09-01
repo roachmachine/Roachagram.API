@@ -4,13 +4,17 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 
 
-namespace AnagramAPI
+namespace Roachagram.API.Models
 {
     /// <summary>
     /// 
     /// </summary>
     /// <seealso cref="Microsoft.EntityFrameworkCore.DbContext" />
-    public class DictionaryDBContext : DbContext
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="DictionaryDBContext"/> class.
+    /// </remarks>
+    /// <param name="options">The options.</param>
+    public class DictionaryDBContext(DbContextOptions<DictionaryDBContext> options) : DbContext(options)
     {
         /// <summary>
         /// Gets or sets the dictionary.
@@ -19,15 +23,6 @@ namespace AnagramAPI
         /// The dictionary.
         /// </value>
         public DbSet<DictionaryDB> Dictionary { get; set; }
-
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DictionaryDBContext"/> class.
-        /// </summary>
-        /// <param name="options">The options.</param>
-        public DictionaryDBContext(DbContextOptions<DictionaryDBContext> options): base(options)
-        { 
-        }
 
         /// <summary>
         /// Override this method to further configure the model that was discovered by convention from the entity types

@@ -1,5 +1,5 @@
 ﻿using System;
-using Roachagram.API;
+using RoachagramAPI;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Builder;
@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Roachagram.API.Models;
 
 namespace Roachagram.API
 {
