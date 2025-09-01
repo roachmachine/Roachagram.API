@@ -1,4 +1,5 @@
 ﻿using System;
+using AnagramAPI;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Builder;
@@ -9,81 +10,100 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace AnagramAPI
+namespace Roachagram.API
 {
     /// <summary>
-    /// Start up class
+    /// Represents the startup class for configuring the application.
     /// </summary>
     /// <author>Michael</author>
     /// <datetime>5/25/2017 7:03 PM</datetime>
-    /// <remarks>Start up class</remarks>
+    /// <remarks>Handles application initialization and configuration.</remarks>
     /// <remarks>
     /// Initializes a new instance of the <see cref="Startup"/> class.
     /// </remarks>
-    /// <param name="configuration">The configuration.</param>
+    /// <param name="configuration">The configuration settings for the application.</param>
     public class Startup(IConfiguration configuration)
     {
+        // Stores the database connection string.
         private string _connection = null;
 
         /// <summary>
-        /// Gets the configuration.
+        /// Gets the application configuration.
         /// </summary>
         /// <value>
-        /// The configuration.
+        /// Provides access to configuration settings.
         /// </value>
         public IConfiguration Configuration { get; } = configuration;
 
-        // This method gets called by the runtime. Use this method to add services to the container.
         /// <summary>
-        /// Configures the services.
+        /// Configures services for the application.
         /// </summary>
-        /// <param name="services">The services.</param>
+        /// <param name="services">The service collection to which services are added.</param>
         public void ConfigureServices(IServiceCollection services)
         {
+            // Adds support for controllers in the application.
             services.AddControllers();
+
+            // Adds memory caching services.
             services.AddMemoryCache();
-            services.AddDbContext<DictionaryDBContext>((DbContextOptionsBuilder options) => { options.UseSqlServer(_connection); });
-            //services.AddApplicationInsightsTelemetry(Configuration["APPINSIGHTS_INSTRUMENTATIONKEY"]);
+
+            // Configures the application's database context with the SQL Server connection string.
+            services.AddDbContext<DictionaryDBContext>((options) =>
+            {
+                options.UseSqlServer(_connection);
+            });
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         /// <summary>
-        /// Configures the specified application.
+        /// Configures the HTTP request pipeline for the application.
         /// </summary>
-        /// <param name="app">The application.</param>
-        /// <param name="env">The env.</param>
+        /// <param name="app">The application builder used to configure the request pipeline.</param>
+        /// <param name="env">The hosting environment information.</param>
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            // Retrieve the connection string directly from the configuration.
+            var connectionString = Configuration["roachagram-db-connection-string"];
 
-            var builder = new SqlConnectionStringBuilder(Configuration.GetConnectionString("SBLDB"));
+            // Build the SQL connection string using the retrieved connection string.
+            var builder = new SqlConnectionStringBuilder(connectionString);
+
+            // Configure the application for development or production environments.
             if (env.IsDevelopment())
             {
+                // Enables the developer exception page for detailed error information in development.
                 app.UseDeveloperExceptionPage();
             }
             else if (env.IsProduction())
             {
+                // Configures retry options for accessing Azure Key Vault in production.
                 SecretClientOptions options = new()
                 {
                     Retry =
-                            {
-                                Delay= TimeSpan.FromSeconds(2),
-                                MaxDelay = TimeSpan.FromSeconds(16),
-                                MaxRetries = 5,
-                                Mode = RetryMode.Exponential
-                             }
+                        {
+                            Delay = TimeSpan.FromSeconds(2),
+                            MaxDelay = TimeSpan.FromSeconds(16),
+                            MaxRetries = 5,
+                            Mode = RetryMode.Exponential
+                        }
                 };
             }
 
+            // Assign the built connection string to the private field.
             _connection = builder.ConnectionString;
 
+            // Enforces HTTPS redirection for all requests.
             app.UseHttpsRedirection();
 
+            // Adds routing middleware to the request pipeline.
             app.UseRouting();
 
+            // Adds authorization middleware to the request pipeline.
             app.UseAuthorization();
 
+            // Configures the endpoints for the application.
             app.UseEndpoints(endpoints =>
             {
+                // Maps controller actions to endpoints.
                 endpoints.MapControllers();
             });
         }
