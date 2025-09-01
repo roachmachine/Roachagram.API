@@ -7,8 +7,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Roachagram.API.BL;
+using Roachagram.API.Models;
 
-namespace AnagramAPI.Controllers
+namespace RoachagramAPI.Controllers
 {
     /// <summary>
     /// API Controller for handling anagram-related operations.
