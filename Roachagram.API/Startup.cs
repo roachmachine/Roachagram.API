@@ -10,6 +10,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Roachagram.API.Models;
+using Microsoft.AspNetCore.Http;
+using System.Linq;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Roachagram.API
 {
@@ -100,6 +103,48 @@ namespace Roachagram.API
 
             // Adds authorization middleware to the request pipeline.
             app.UseAuthorization();
+
+            // Adds rate limiting middleware based on the "X-Device-ID" header.
+            app.Use(async (context, next) =>
+            {
+                // Retrieve the "X-Device-ID" header from the request.
+                var deviceId = context.Request.Headers["X-Device-ID"].FirstOrDefault();
+
+                // Check if the deviceId is present.
+                if (string.IsNullOrEmpty(deviceId))
+                {
+                    // Respond with 400 Bad Request if the header is missing.
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await context.Response.WriteAsync("Missing X-Device-ID header.");
+                    return;
+                }
+
+                // Implement rate limiting logic here (e.g., check a cache or database for request limits).
+                // Add the deviceId to a cache with a sliding expiration.
+                var cache = app.ApplicationServices.GetRequiredService<IMemoryCache>();
+                var cacheKey = $"RateLimit-{deviceId}";
+
+                // Check if the deviceId is already in the cache.
+                if (!cache.TryGetValue(cacheKey, out _))
+                {
+                    // Add the deviceId to the cache with a sliding expiration of 5 seconds.
+                    var cacheEntryOptions = new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = TimeSpan.FromSeconds(5)
+                    };
+
+                    cache.Set(cacheKey, true, cacheEntryOptions);
+                }
+                else
+                {
+                    // Respond with 429 Too Many Requests if the deviceId is already in the cache.
+                    context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                    await context.Response.WriteAsync("Rate limit exceeded. Please try again later.");
+                    return;
+                }
+                
+                await next.Invoke();
+            });
 
             // Configures the endpoints for the application.
             app.UseEndpoints(endpoints =>
