@@ -1,15 +1,19 @@
 ﻿using System;
-using RoachagramAPI;
+using System.Linq;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Roachagram.API.Extensions;
 using Roachagram.API.Models;
+using RoachagramAPI;
 
 namespace Roachagram.API
 {
@@ -100,6 +104,8 @@ namespace Roachagram.API
 
             // Adds authorization middleware to the request pipeline.
             app.UseAuthorization();
+
+            app.UseRateLimiting(TimeSpan.FromSeconds(5));
 
             // Configures the endpoints for the application.
             app.UseEndpoints(endpoints =>
