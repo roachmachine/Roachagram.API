@@ -13,7 +13,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Roachagram.API.Extensions;
 using Roachagram.API.Models;
-using RoachagramAPI;
 
 namespace Roachagram.API
 {
@@ -42,6 +41,7 @@ namespace Roachagram.API
 
         /// <summary>
         /// Configures services for the application.
+        /// Adds retry logic for the database connection in case the database is unresponsive.
         /// </summary>
         /// <param name="services">The service collection to which services are added.</param>
         public void ConfigureServices(IServiceCollection services)
@@ -52,10 +52,17 @@ namespace Roachagram.API
             // Adds memory caching services.
             services.AddMemoryCache();
 
-            // Configures the application's database context with the SQL Server connection string.
+            // Configures the application's database context with retry logic for transient failures.
             services.AddDbContext<DictionaryDBContext>((options) =>
             {
-                options.UseSqlServer(_connection);
+                options.UseSqlServer(_connection, sqlOptions =>
+                {
+                    sqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 10, // Maximum number of retry attempts.
+                        maxRetryDelay: TimeSpan.FromSeconds(10), // Maximum delay between retries.
+                        errorNumbersToAdd: null // Additional SQL error codes to consider transient.
+                    );
+                });
             });
         }
 
@@ -85,10 +92,10 @@ namespace Roachagram.API
                 {
                     Retry =
                         {
-                            Delay = TimeSpan.FromSeconds(2),
-                            MaxDelay = TimeSpan.FromSeconds(16),
+                            Delay = TimeSpan.FromSeconds(30),
+                            MaxDelay = TimeSpan.FromSeconds(240),
                             MaxRetries = 5,
-                            Mode = RetryMode.Exponential
+                            Mode = RetryMode.Fixed
                         }
                 };
             }
