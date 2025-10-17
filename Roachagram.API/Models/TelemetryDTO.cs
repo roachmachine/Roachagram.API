@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Roachagram.API.Models
 {
@@ -105,6 +106,6 @@ namespace Roachagram.API.Models
         /// <summary>
         /// Gets or sets the additional contextual properties collected with this telemetry event.
         /// </summary>
-        public Properties Properties { get; set; }
+        public Dictionary<string, string> Properties { get; set; }
     }
 }

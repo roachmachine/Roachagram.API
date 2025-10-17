@@ -49,104 +49,31 @@ namespace Roachagram.API.Controllers
         {
             if (dto == null) return BadRequest();
 
-            var properties = ConvertToStringDictionary(dto.Properties);
+            var properties = dto.Properties ?? new Dictionary<string, string>();
 
             // Take the SerializedException and convert it to properties for a concatenated message
 
-            properties.Add("ExceptionType", dto.SerializedException?.Type ?? "null");
-            properties.Add("ExceptionMessage", dto.SerializedException?.Message ?? "null");
-            properties.Add("ExceptionSource", dto.SerializedException?.Source ?? "null");
-            properties.Add("ExceptionTargetSite", dto.SerializedException?.TargetSite ?? "null");
-            properties.Add("ExceptionStackTrace", dto.SerializedException?.StackTrace ?? "null");
+
 
             switch (dto.Type?.ToLowerInvariant())
             {
-                case "event":
-                    _telemetry.TrackEvent(dto.Message ?? "unnamed_event", properties);
-                    break;
                 case "trace":
-                    _telemetry.TrackTrace(dto.Message ?? "No trace message provided", properties);
+                    _telemetry.TrackTrace((dto.Name != null && dto.Message != null) ? $"{dto.Name} - {dto.Message}" : "No trace message provided", properties);
                     break;
                 case "exception":
-                     _telemetry.TrackException(new Exception($"Remote Exception {dto.SerializedException?.Message ?? "null"}"), properties);
+                    //add the exception properties
+                    properties["ExceptionType"] = dto.SerializedException?.Type ?? "null";
+                    properties["ExceptionMessage"] = dto.SerializedException?.Message ?? "null";
+                    properties["ExceptionSource"] = dto.SerializedException?.Source ?? "null";
+                    properties["ExceptionTargetSite"] = dto.SerializedException?.TargetSite ?? "null";
+                    properties["ExceptionStackTrace"] = dto.SerializedException?.StackTrace ?? "null";
+                    _telemetry.TrackException(new Exception($"Remote Exception {dto.SerializedException?.Message ?? "null"}"), properties);
                     break;
                 default:
-                    return BadRequest("unknown telemetry type. need event, trace, or exception");
+                    return BadRequest("unknown telemetry type. need trace or exception");
             }
 
             return Created();
-        }
-
-        /// <summary>
-        /// Converts a loosely-typed object containing key/value pairs into a string dictionary suitable for telemetry properties.
-        /// </summary>
-        /// <param name="properties">
-        /// The source properties to convert. Supported shapes:
-        /// - <see cref="IDictionary{TKey, TValue}"/> with <c>string, string</c> entries.
-        /// - non-generic <see cref="IDictionary"/> implementations such as <see cref="Hashtable"/>.
-        /// - A POCO whose public instance readable properties will be reflected and converted to strings.
-        /// </param>
-        /// <returns>
-        /// A case-insensitive <see cref="Dictionary{TKey, TValue}"/> containing stringified property values,
-        /// or <c>null</c> when <paramref name="properties"/> is <c>null</c> or contains no entries.
-        /// </returns>
-        /// <remarks>
-        /// - When given an <see cref="IDictionary{string, string}"/>, the method returns a copy to prevent callers from
-        ///   mutating the original dictionary.
-        /// - For non-generic dictionaries, keys and values are stringified using <see cref="object.ToString"/>.
-        /// - For reflected POCOs, any property getter that throws will be ignored.
-        /// </remarks>
-        private static Dictionary<string, string> ConvertToStringDictionary(object properties)
-        {
-            if (properties == null) return null;
-
-            // If already the expected type
-            if (properties is IDictionary<string, string> typedDict)
-            {
-                return typedDict.Count > 0 ? new Dictionary<string, string>(typedDict, StringComparer.OrdinalIgnoreCase) : null;
-            }
-
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            // Handle non-generic IDictionary (e.g., Hashtable)
-            if (properties is IDictionary nonGenericDict)
-            {
-                foreach (DictionaryEntry entry in nonGenericDict)
-                {
-                    var key = entry.Key?.ToString();
-                    if (string.IsNullOrEmpty(key)) continue;
-                    var value = entry.Value?.ToString();
-                    if (value == null) continue;
-                    result[key] = value;
-                }
-
-                return result.Count > 0 ? result : null;
-            }
-
-            // Reflect over public instance properties
-            var props = properties.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                .Where(p => p.CanRead);
-
-            foreach (var prop in props)
-            {
-                var key = prop.Name;
-                if (string.IsNullOrEmpty(key)) continue;
-                object valueObj;
-                try
-                {
-                    valueObj = prop.GetValue(properties);
-                }
-                catch
-                {
-                    // Ignore properties that throw on get
-                    continue;
-                }
-
-                if (valueObj == null) continue;
-                result[key] = valueObj.ToString();
-            }
-
-            return result.Count > 0 ? result : null;
         }
     }
 }
