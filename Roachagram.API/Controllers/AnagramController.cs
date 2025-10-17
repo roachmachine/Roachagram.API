@@ -202,6 +202,7 @@ namespace Roachagram.API.Controllers
                     "AnagramsGenerated",
                     new Dictionary<string, string>
                     {
+                        ["AnagramInput"] = (input).ToString(),
                         ["AnagramCount"] = (anagramResult.Anagrams?.Count ?? 0).ToString(),
                         ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(10))
 
