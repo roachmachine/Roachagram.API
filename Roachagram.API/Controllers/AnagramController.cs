@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Roachagram.API.BL;
 using Roachagram.API.Models;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Roachagram.API.Controllers
 {
@@ -25,7 +27,7 @@ namespace Roachagram.API.Controllers
     /// <param name="memoryCache">The memory cache for caching dictionary data.</param>
     /// <param name="db">The database context for accessing dictionary data.</param>
     [Route("api/[controller]")]
-    public class AnagramController(IMemoryCache memoryCache, DictionaryDBContext db, IConfiguration configuration) : Controller
+    public class AnagramController(IMemoryCache memoryCache, DictionaryDBContext db, IConfiguration configuration, TelemetryClient telemetryClient) : Controller
     {
         // Default values and constants
         private const string DefaultInput = "roachmachine";
@@ -61,7 +63,12 @@ namespace Roachagram.API.Controllers
 
                 // Normalize input to lowercase and remove non-alphabetic characters
                 input = input.ToLower();
-                Regex rgx = new Regex("[^a-z]", RegexOptions.Compiled);
+
+#pragma warning disable SYSLIB1045
+                //small input, easy reg ex, no worries
+                Regex rgx = new("[^a-z]", RegexOptions.Compiled);
+#pragma warning restore SYSLIB1045
+
                 input = rgx.Replace(input, "");
 
                 // Ensure input length does not exceed the maximum allowed
@@ -130,7 +137,7 @@ namespace Roachagram.API.Controllers
                 //output contains a list of multipe word anagrams, grab all 1 word angrams
                 List<string> finalAnagrams = [.. output.Where(anagram => anagram.Split(' ').Length == 1)];
 
-                //output contains a list of multipe word anagrams, grab all 2 word angrams
+                //output contains a list of multipe word anagrams, grab all 2 word anagrams
                 List<string> twoWordAnagrams = [.. output.Where(anagram => anagram.Split(' ').Length == 2)];
 
                 //output contains a list of multipe word anagrams, grab all 2 word angrams
@@ -189,7 +196,19 @@ namespace Roachagram.API.Controllers
 
                 AIBL aIBL = new(configuration);
                 var response = await aIBL.GetAIResult(anagramResult); ;
+
+                // Trace the request and results for diagnostics
+                telemetryClient.TrackTrace(
+                    "AnagramsGenerated",
+                    new Dictionary<string, string>
+                    {
+                        ["AnagramCount"] = (anagramResult.Anagrams?.Count ?? 0).ToString(),
+                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(10))
+
+                    });
+
                 return response.Trim('\"');
+
             }
             catch (Exception ex)
             {
