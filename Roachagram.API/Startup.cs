@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Linq;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -42,6 +40,7 @@ namespace Roachagram.API
         /// <summary>
         /// Configures services for the application.
         /// Adds retry logic for the database connection in case the database is unresponsive.
+        /// Registers Application Insights telemetry.
         /// </summary>
         /// <param name="services">The service collection to which services are added.</param>
         public void ConfigureServices(IServiceCollection services)
@@ -51,6 +50,32 @@ namespace Roachagram.API
 
             // Adds memory caching services.
             services.AddMemoryCache();
+
+            // Register Application Insights using configuration or environment variable.
+            var aiConnectionString = Configuration["roach-machine-app-insights"]
+                                     ?? Configuration["APPINSIGHTS_CONNECTIONSTRING"];
+            if (!string.IsNullOrWhiteSpace(aiConnectionString))
+            {
+                services.AddApplicationInsightsTelemetry(options =>
+                {
+                    options.ConnectionString = aiConnectionString;
+                });
+            }
+
+            // Determine DB connection string at startup (prefer configuration).
+            var configuredConn = Configuration["roachagram-db-connection-string"];
+            if (string.IsNullOrWhiteSpace(configuredConn) && !string.IsNullOrWhiteSpace(_connection))
+            {
+                configuredConn = _connection;
+            }
+
+            if (string.IsNullOrWhiteSpace(configuredConn))
+            {
+                throw new InvalidOperationException("Database connection string 'roachagram-db-connection-string' is not configured.");
+            }
+
+            var builder = new SqlConnectionStringBuilder(configuredConn);
+            _connection = builder.ConnectionString;
 
             // Configures the application's database context with retry logic for transient failures.
             services.AddDbContext<DictionaryDBContext>((options) =>
@@ -73,11 +98,13 @@ namespace Roachagram.API
         /// <param name="env">The hosting environment information.</param>
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            // Retrieve the connection string directly from the configuration.
+            // Retrieve the connection string directly from the configuration if present.
             var connectionString = Configuration["roachagram-db-connection-string"];
-
-            // Build the SQL connection string using the retrieved connection string.
-            var builder = new SqlConnectionStringBuilder(connectionString);
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                var builder = new SqlConnectionStringBuilder(connectionString);
+                _connection = builder.ConnectionString;
+            }
 
             // Configure the application for development or production environments.
             if (env.IsDevelopment())
@@ -99,9 +126,6 @@ namespace Roachagram.API
                         }
                 };
             }
-
-            // Assign the built connection string to the private field.
-            _connection = builder.ConnectionString;
 
             // Enforces HTTPS redirection for all requests.
             app.UseHttpsRedirection();
