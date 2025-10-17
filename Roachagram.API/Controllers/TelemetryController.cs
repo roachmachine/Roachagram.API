@@ -47,12 +47,12 @@ namespace Roachagram.API.Controllers
         // Add [Authorize] and validate tokens/keys in production
         public IActionResult Post(TelemetryDTO dto)
         {
-
             if (dto == null) return BadRequest();
 
             var properties = ConvertToStringDictionary(dto.Properties);
 
-            //take the SerializedException and convert to properties to a nice concatenated message
+            // Take the SerializedException and convert it to properties for a concatenated message
+
             properties.Add("ExceptionType", dto.SerializedException?.Type ?? "null");
             properties.Add("ExceptionMessage", dto.SerializedException?.Message ?? "null");
             properties.Add("ExceptionSource", dto.SerializedException?.Source ?? "null");
@@ -62,14 +62,13 @@ namespace Roachagram.API.Controllers
             switch (dto.Type?.ToLowerInvariant())
             {
                 case "event":
-                    _telemetry.TrackEvent(dto.Type ?? "unnamed_event", properties);
+                    _telemetry.TrackEvent(dto.Message ?? "unnamed_event", properties);
                     break;
                 case "trace":
-                    _telemetry.TrackTrace(dto.Type ?? "unnamed_event", properties);
+                    _telemetry.TrackTrace(dto.Message ?? "No trace message provided", properties);
                     break;
                 case "exception":
-
-                    _telemetry.TrackException(new Exception($"Remote Exception {dto.SerializedException?.Message ?? "null"}"), properties);
+                     _telemetry.TrackException(new Exception($"Remote Exception {dto.SerializedException?.Message ?? "null"}"), properties);
                     break;
                 default:
                     return BadRequest("unknown telemetry type. need event, trace, or exception");

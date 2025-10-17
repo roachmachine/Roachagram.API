@@ -64,10 +64,10 @@ namespace Roachagram.API.Controllers
                 // Normalize input to lowercase and remove non-alphabetic characters
                 input = input.ToLower();
 
-#pragma warning disable
+#pragma warning disable SYSLIB1045
                 //small input, easy reg ex, no worries
                 Regex rgx = new("[^a-z]", RegexOptions.Compiled);
-#pragma warning restore
+#pragma warning restore SYSLIB1045
 
                 input = rgx.Replace(input, "");
 
@@ -202,12 +202,12 @@ namespace Roachagram.API.Controllers
                     "AnagramsGenerated",
                     new Dictionary<string, string>
                     {
-                        ["Input"] = input,
-                        ["Anagrams"] = string.Join(", ", anagramResult.Anagrams ?? [])
+                        ["AnagramCount"] = (anagramResult.Anagrams?.Count ?? 0).ToString(),
+                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(10))
+
                     });
 
                 return response.Trim('\"');
-
 
             }
             catch (Exception ex)

@@ -10,6 +10,7 @@ namespace Roachagram.API.Models
     {
         /// <summary>
         /// Gets or sets the CLR type name of the exception (for example, "System.NullReferenceException").
+        /// This is a fully-qualified type name useful for programmatic analysis.
         /// </summary>
         public string Type { get; set; }
 
@@ -82,6 +83,19 @@ namespace Roachagram.API.Models
         /// Gets or sets the telemetry event type or category (for example, "Error", "Metric", "Trace").
         /// </summary>
         public string Type { get; set; }
+
+        /// <summary>
+        /// Gets or sets the short or friendly name of the exception type (for example, "NullReferenceException").
+        /// Use this for display purposes where the fully-qualified <see cref="Type"/> is not required.
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
+        /// Gets or sets a short, human-readable message associated with the telemetry event.
+        /// For error events this typically mirrors the exception message; for traces or metrics it
+        /// can contain a concise description or contextual detail. May be null or empty if no message is provided.
+        /// </summary>
+        public string Message { get; set; }
 
         /// <summary>
         /// Gets or sets the serialized exception data associated with this telemetry event, if any.
