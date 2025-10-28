@@ -105,7 +105,8 @@ namespace Roachagram.API.Controllers
 
                     if (!System.IO.File.Exists(csvPath))
                     {
-                        throw new FileNotFoundException("Dictionary file not found.");
+                        throw new FileNotFoundException($"Dictionary file not found at path: {csvPath}");
+
                     }
 
                     // Read CSV and populate dictionary
@@ -226,7 +227,8 @@ namespace Roachagram.API.Controllers
             catch (Exception ex)
             {
                 _telemetryClient.TrackException(ex);
-                return $"error: {ex.Message}";
+                return "An error occurred while processing your request.";
+
             }
         }
     }
