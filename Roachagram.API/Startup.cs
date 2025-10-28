@@ -61,34 +61,6 @@ namespace Roachagram.API
                     options.ConnectionString = aiConnectionString;
                 });
             }
-
-            // Determine DB connection string at startup (prefer configuration).
-            var configuredConn = Configuration["roachagram-db-connection-string"];
-            if (string.IsNullOrWhiteSpace(configuredConn) && !string.IsNullOrWhiteSpace(_connection))
-            {
-                configuredConn = _connection;
-            }
-
-            if (string.IsNullOrWhiteSpace(configuredConn))
-            {
-                throw new InvalidOperationException("Database connection string 'roachagram-db-connection-string' is not configured.");
-            }
-
-            var builder = new SqlConnectionStringBuilder(configuredConn);
-            _connection = builder.ConnectionString;
-
-            // Configures the application's database context with retry logic for transient failures.
-            services.AddDbContext<DictionaryDBContext>((options) =>
-            {
-                options.UseSqlServer(_connection, sqlOptions =>
-                {
-                    sqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 10, // Maximum number of retry attempts.
-                        maxRetryDelay: TimeSpan.FromSeconds(10), // Maximum delay between retries.
-                        errorNumbersToAdd: null // Additional SQL error codes to consider transient.
-                    );
-                });
-            });
         }
 
         /// <summary>
@@ -98,14 +70,6 @@ namespace Roachagram.API
         /// <param name="env">The hosting environment information.</param>
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            // Retrieve the connection string directly from the configuration if present.
-            var connectionString = Configuration["roachagram-db-connection-string"];
-            if (!string.IsNullOrWhiteSpace(connectionString))
-            {
-                var builder = new SqlConnectionStringBuilder(connectionString);
-                _connection = builder.ConnectionString;
-            }
-
             // Configure the application for development or production environments.
             if (env.IsDevelopment())
             {
