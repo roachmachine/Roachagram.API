@@ -26,9 +26,6 @@ namespace Roachagram.API
     /// <param name="configuration">The configuration settings for the application.</param>
     public class Startup(IConfiguration configuration)
     {
-        // Stores the database connection string.
-        private string _connection = null;
-
         /// <summary>
         /// Gets the application configuration.
         /// </summary>
