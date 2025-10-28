@@ -41,4 +41,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Roachagram.ClassLibrary\Roachagram.ClassLibrary.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="Files\default-dictionary.csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Roachagram.API.BL;
 using Roachagram.API.Models;
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Roachagram.API.Controllers
 {
@@ -26,8 +28,11 @@ namespace Roachagram.API.Controllers
     /// </remarks>
     /// <param name="memoryCache">The memory cache for caching dictionary data.</param>
     /// <param name="db">The database context for accessing dictionary data.</param>
+    /// <param name="configuration">The configuration.</param>
+    /// <param name="telemetryClient">The telemetry client.</param>
+    /// <param name="env">The web host environment.</param>
     [Route("api/[controller]")]
-    public class AnagramController(IMemoryCache memoryCache, DictionaryDBContext db, IConfiguration configuration, TelemetryClient telemetryClient) : Controller
+    public class AnagramController(IMemoryCache memoryCache, IConfiguration configuration, TelemetryClient telemetryClient, IWebHostEnvironment env) : Controller
     {
         // Default values and constants
         private const string DefaultInput = "roachmachine";
@@ -38,7 +43,9 @@ namespace Roachagram.API.Controllers
 
         // Dependencies
         private readonly IMemoryCache _memoryCache = memoryCache;
-        private readonly DictionaryDBContext _db = db;
+        private readonly IConfiguration _configuration = configuration;
+        private readonly TelemetryClient _telemetryClient = telemetryClient;
+        private readonly IWebHostEnvironment _env = env;
 
         /// <summary>
         /// Endpoint to generate anagrams based on the input string and constraints.
@@ -46,39 +53,31 @@ namespace Roachagram.API.Controllers
         /// <param name="input">The input string to generate anagrams for.</param>
         /// <param name="minwordlength">The minimum length of words in the anagrams. Defaults to 2.</param>
         /// <param name="maxnumwords">The maximum number of words in the anagrams. Defaults to 3.</param>
-        /// <param name="psuedonymn">Reserved for future use (e.g., pseudonym search).</param>
         /// <returns>A list of anagrams or an error message if the operation fails.</returns>
-        /// <exception cref="Exception">Thrown if the input exceeds the maximum allowed length.</exception>
         [HttpGet]
         public async Task<string> Get([FromQuery] string input, int minwordlength = 2, int maxnumwords = 3)
         {
             try
             {
                 #region Validate Input
-                // Handle null or empty input by using a default value
                 if (string.IsNullOrEmpty(input))
                 {
                     input = DefaultInput;
                 }
 
-                // Normalize input to lowercase and remove non-alphabetic characters
-                input = input.ToLower();
+                input = input.ToLowerInvariant();
 
 #pragma warning disable SYSLIB1045
-                //small input, easy reg ex, no worries
                 Regex rgx = new("[^a-z]", RegexOptions.Compiled);
 #pragma warning restore SYSLIB1045
 
                 input = rgx.Replace(input, "");
 
-                // Ensure input length does not exceed the maximum allowed
                 if (input.Length > MaxInputLetters)
                 {
-                    throw new Exception("Input greater than 15 characters");
+                    throw new Exception($"Input greater than {MaxInputLetters} characters");
                 }
 
-
-                // Validate and adjust minimum word length
                 if (minwordlength <= 0)
                 {
                     minwordlength = DefaultMinWordLength;
@@ -88,7 +87,6 @@ namespace Roachagram.API.Controllers
                     minwordlength = input.Length;
                 }
 
-                // Validate and adjust maximum number of words
                 if (maxnumwords <= 0 || maxnumwords > 4)
                 {
                     maxnumwords = DefaultMaxNumWords;
@@ -96,31 +94,42 @@ namespace Roachagram.API.Controllers
                 #endregion
 
                 // Dictionary to store cached or fetched dictionary data
-                Dictionary<string, string> dictionaryItems = [];
+                Dictionary<string, string> dictionaryItems;
 
                 // Attempt to retrieve dictionary data from cache
                 if (!_memoryCache.TryGetValue(BasicDictionaryCacheKey, out dictionaryItems))
                 {
-                    // Fetch dictionary data from the database if not cached
-                    int retryCount = 3;
-                    while (retryCount > 0)
-                    {
-                        try
-                        {
-                            dictionaryItems = _db.Dictionary
-                                .FromSqlRaw("exec get_basic_english_dictionary")
-                                .ToDictionary(kvp => kvp.Word, kvp => kvp.Word_ordered_array);
-                            break; // Exit loop if successful
-                        }
-                        catch (Exception ex)
-                        {
-                            await Task.Delay(30000);
+                    dictionaryItems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-                            retryCount--;
-                            if (retryCount == 0)
-                            {
-                                throw new Exception("Failed to fetch dictionary data after multiple attempts.", ex);
-                            }
+                    // Determine CSV path from configuration or use default
+                    string csvPath = Path.Combine(_env.ContentRootPath, "Files", "default-dictionary.csv");
+
+                    if (!System.IO.File.Exists(csvPath))
+                    {
+                        throw new FileNotFoundException($"Dictionary CSV not found at path: {csvPath}");
+                    }
+
+                    // Read CSV and populate dictionary
+                    foreach (var rawLine in System.IO.File.ReadLines(csvPath))
+                    {
+                        if (string.IsNullOrWhiteSpace(rawLine))
+                            continue;
+
+                        // Split into up to 3 parts: id, word, orderedletters
+                        var parts = rawLine.Split(new[] { ',' }, 4);
+                        if (parts.Length < 2)
+                            continue;
+
+                        // column 1 is the Word, column 2 is the ordered letters (if present)
+                        string word = parts.Length > 1 ? parts[1].Trim().Trim('"') : string.Empty;
+                        string ordered = parts.Length > 2 ? parts[2].Trim().Trim('"') : string.Empty;
+
+                        if (string.IsNullOrEmpty(word))
+                            continue;
+
+                        if (!dictionaryItems.ContainsKey(word))
+                        {
+                            dictionaryItems[word] = ordered;
                         }
                     }
 
@@ -131,89 +140,86 @@ namespace Roachagram.API.Controllers
                 // Generate anagrams using the business logic layer
                 List<string> output = AnagramBL.GetAnagrams(input.Trim(), minwordlength, maxnumwords, dictionaryItems);
 
-                //remove the original input from the list
+                // Remove the original input from the list (ignoring spaces and case)
                 output.RemoveAll(anagram => anagram.Replace(" ", "").Equals(input, StringComparison.OrdinalIgnoreCase));
 
-                //output contains a list of multipe word anagrams, grab all 1 word angrams
-                List<string> finalAnagrams = [.. output.Where(anagram => anagram.Split(' ').Length == 1)];
+                // Partition outputs
+                List<string> finalAnagrams = output.Where(anagram => anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 1).ToList();
+                List<string> twoWordAnagrams = output.Where(anagram => anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 2).ToList();
+                List<string> threeWordAnagrams = output.Where(anagram => anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 3).ToList();
 
-                //output contains a list of multipe word anagrams, grab all 2 word anagrams
-                List<string> twoWordAnagrams = [.. output.Where(anagram => anagram.Split(' ').Length == 2)];
+                var rand = new Random();
 
-                //output contains a list of multipe word anagrams, grab all 2 word angrams
-                List<string> threeWordAnagrams = [.. output.Where(anagram => anagram.Split(' ').Length == 3)];
-
-                //if there are less than 10 one word anagrams fill the rest with two word anagrams with random word order
-                if (finalAnagrams.Count < 10)
+                // Fill with two-word anagrams (reverse order) if needed
+                if (finalAnagrams.Count < 10 && twoWordAnagrams.Count > 0)
                 {
-                    Random rand = new();
                     int needed = 10 - finalAnagrams.Count;
                     var shuffledTwoWordAnagrams = twoWordAnagrams
                         .OrderBy(x => rand.Next())
                         .Take(needed)
                         .Select(anagram =>
                         {
-                            var words = anagram.Split(' ');
-                            return $"{words[1]} {words[0]}"; // Reverse the order of the two words
+                            var words = anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            if (words.Length == 2)
+                                return $"{words[1]} {words[0]}";
+                            return anagram;
                         })
                         .ToList();
                     finalAnagrams.AddRange(shuffledTwoWordAnagrams);
                 }
 
-                //if our list still has less than 10 anagrams fill the rest with three word anagrams with random word order
-                if (finalAnagrams.Count < 10)
+                // Fill with three-word anagrams (reverse order) if still needed
+                if (finalAnagrams.Count < 10 && threeWordAnagrams.Count > 0)
                 {
-                    Random rand = new();
                     int needed = 10 - finalAnagrams.Count;
                     var shuffledThreeWordAnagrams = threeWordAnagrams
                         .OrderBy(x => rand.Next())
                         .Take(needed)
                         .Select(anagram =>
                         {
-                            var words = anagram.Split(' ');
-                            return $"{words[2]} {words[1]} {words[0]}"; // Reverse the order of the three words
+                            var words = anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                            if (words.Length == 3)
+                                return $"{words[2]} {words[1]} {words[0]}";
+                            return anagram;
                         })
                         .ToList();
                     finalAnagrams.AddRange(shuffledThreeWordAnagrams);
                 }
 
-                foreach (string anagram in finalAnagrams)
-                {
-
-                    Random rand = new();
-                    finalAnagrams = [.. finalAnagrams.Select(anagram =>
+                // Randomize word order inside each anagram (single pass)
+                finalAnagrams = finalAnagrams
+                    .Select(anagram =>
                     {
-                        var words = anagram.Split(' ');
+                        var words = anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                         return string.Join(" ", words.OrderBy(_ => rand.Next()));
-                    })];
-                }
+                    })
+                    .ToList();
+
+                var distinctTop = finalAnagrams.Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToList();
 
                 AnagramResult anagramResult = new()
                 {
                     Input = input,
-                    Anagrams = [.. finalAnagrams.Distinct().Take(10)]
+                    Anagrams = distinctTop
                 };
 
-                AIBL aIBL = new(configuration);
-                var response = await aIBL.GetAIResult(anagramResult); ;
+                AIBL aIBL = new(_configuration);
+                var response = await aIBL.GetAIResult(anagramResult);
 
                 // Trace the request and results for diagnostics
-                telemetryClient.TrackTrace(
+                _telemetryClient.TrackTrace(
                     "AnagramsGenerated",
                     new Dictionary<string, string>
                     {
                         ["AnagramInput"] = (input).ToString(),
                         ["AnagramCount"] = (anagramResult.Anagrams?.Count ?? 0).ToString(),
-                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(10))
-
+                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? new List<string>()).Take(10))
                     });
 
-                return response.Trim('\"');
-
+                return response?.Trim('\"') ?? string.Empty;
             }
             catch (Exception ex)
             {
-                // Return an error message in case of failure
                 return $"error: {ex.StackTrace}";
             }
         }
