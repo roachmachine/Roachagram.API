@@ -1,18 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.ApplicationInsights;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Roachagram.API.BL;
 using Roachagram.API.Models;
-using System.Diagnostics.CodeAnalysis;
-using Microsoft.AspNetCore.Hosting;
+using Roachagram.ClassLibrary;
 
 namespace Roachagram.API.Controllers
 {
@@ -27,7 +28,6 @@ namespace Roachagram.API.Controllers
     /// Initializes a new instance of the <see cref="AnagramController"/> class.
     /// </remarks>
     /// <param name="memoryCache">The memory cache for caching dictionary data.</param>
-    /// <param name="db">The database context for accessing dictionary data.</param>
     /// <param name="configuration">The configuration.</param>
     /// <param name="telemetryClient">The telemetry client.</param>
     /// <param name="env">The web host environment.</param>
@@ -75,7 +75,7 @@ namespace Roachagram.API.Controllers
 
                 if (input.Length > MaxInputLetters)
                 {
-                    throw new Exception($"Input greater than {MaxInputLetters} characters");
+                    throw new ArgumentOutOfRangeException(nameof(input), input.Length, $"Input greater than {MaxInputLetters} characters");
                 }
 
                 if (minwordlength <= 0)
@@ -94,19 +94,19 @@ namespace Roachagram.API.Controllers
                 #endregion
 
                 // Dictionary to store cached or fetched dictionary data
-                Dictionary<string, string> dictionaryItems;
 
                 // Attempt to retrieve dictionary data from cache
-                if (!_memoryCache.TryGetValue(BasicDictionaryCacheKey, out dictionaryItems))
+                if (!_memoryCache.TryGetValue(BasicDictionaryCacheKey, out Dictionary<string, string> dictionaryItems))
                 {
                     dictionaryItems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-                    // Determine CSV path from configuration or use default
+                    //get file from files directory
                     string csvPath = Path.Combine(_env.ContentRootPath, "Files", "default-dictionary.csv");
 
                     if (!System.IO.File.Exists(csvPath))
                     {
-                        throw new FileNotFoundException($"Dictionary CSV not found at path: {csvPath}");
+                        throw new FileNotFoundException($"Dictionary file not found at path: {csvPath}");
+
                     }
 
                     // Read CSV and populate dictionary
@@ -115,22 +115,19 @@ namespace Roachagram.API.Controllers
                         if (string.IsNullOrWhiteSpace(rawLine))
                             continue;
 
-                        // Split into up to 3 parts: id, word, orderedletters
-                        var parts = rawLine.Split(new[] { ',' }, 4);
+                        // Split into up to 4 parts: id, word, orderedletters, [extra]
+                        var parts = rawLine.Split([','], 4);
                         if (parts.Length < 2)
                             continue;
 
                         // column 1 is the Word, column 2 is the ordered letters (if present)
-                        string word = parts.Length > 1 ? parts[1].Trim().Trim('"') : string.Empty;
+                        string word = parts[1].Trim().Trim('"');
                         string ordered = parts.Length > 2 ? parts[2].Trim().Trim('"') : string.Empty;
 
                         if (string.IsNullOrEmpty(word))
                             continue;
 
-                        if (!dictionaryItems.ContainsKey(word))
-                        {
-                            dictionaryItems[word] = ordered;
-                        }
+                        dictionaryItems.TryAdd(word, ordered);
                     }
 
                     // Cache the fetched dictionary data
@@ -144,10 +141,20 @@ namespace Roachagram.API.Controllers
                 output.RemoveAll(anagram => anagram.Replace(" ", "").Equals(input, StringComparison.OrdinalIgnoreCase));
 
                 // Partition outputs
-                List<string> finalAnagrams = output.Where(anagram => anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 1).ToList();
-                List<string> twoWordAnagrams = output.Where(anagram => anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 2).ToList();
-                List<string> threeWordAnagrams = output.Where(anagram => anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length == 3).ToList();
-
+                // Partition outputs in a single pass
+                List<string> finalAnagrams = [];
+                List<string> twoWordAnagrams = [];
+                List<string> threeWordAnagrams = [];
+                foreach (var anagram in output)
+                {
+                    int wordCount = anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+                    if (wordCount == 1)
+                        finalAnagrams.Add(anagram);
+                    else if (wordCount == 2)
+                        twoWordAnagrams.Add(anagram);
+                    else if (wordCount == 3)
+                        threeWordAnagrams.Add(anagram);
+                }
                 var rand = new Random();
 
                 // Fill with two-word anagrams (reverse order) if needed
@@ -187,13 +194,12 @@ namespace Roachagram.API.Controllers
                 }
 
                 // Randomize word order inside each anagram (single pass)
-                finalAnagrams = finalAnagrams
+                finalAnagrams = [.. finalAnagrams
                     .Select(anagram =>
                     {
                         var words = anagram.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                         return string.Join(" ", words.OrderBy(_ => rand.Next()));
-                    })
-                    .ToList();
+                    })];
 
                 var distinctTop = finalAnagrams.Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToList();
 
@@ -211,16 +217,18 @@ namespace Roachagram.API.Controllers
                     "AnagramsGenerated",
                     new Dictionary<string, string>
                     {
-                        ["AnagramInput"] = (input).ToString(),
+                        ["AnagramInput"] = input,
                         ["AnagramCount"] = (anagramResult.Anagrams?.Count ?? 0).ToString(),
-                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? new List<string>()).Take(10))
+                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(10))
                     });
 
                 return response?.Trim('\"') ?? string.Empty;
             }
             catch (Exception ex)
             {
-                return $"error: {ex.StackTrace}";
+                _telemetryClient.TrackException(ex);
+                return "An error occurred while processing your request.";
+
             }
         }
     }
