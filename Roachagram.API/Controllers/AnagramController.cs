@@ -39,7 +39,9 @@ namespace Roachagram.API.Controllers
         private const string BasicDictionaryCacheKey = "BasicEnglishDictionary";
         private const int DefaultMinWordLength = 2;
         private const int DefaultMaxNumWords = 3;
-        private const int MaxInputLetters = 20;
+        private const int MaxInputLetters = 15;
+
+        //let's do a bigger word if
 
         // Dependencies
         private readonly IMemoryCache _memoryCache = memoryCache;
@@ -59,6 +61,7 @@ namespace Roachagram.API.Controllers
         {
             try
             {
+                
                 #region Validate Input
                 if (string.IsNullOrEmpty(input))
                 {
@@ -93,10 +96,16 @@ namespace Roachagram.API.Controllers
                 }
                 #endregion
 
-                // Dictionary to store cached or fetched dictionary data
+                // Adjust min word length and max num words based on input length           
+                if (input.Length >= 10)
+                {
+                    minwordlength = 3;
+                    maxnumwords = 2;
+                }
 
-                // Attempt to retrieve dictionary data from cache
-                if (!_memoryCache.TryGetValue(BasicDictionaryCacheKey, out Dictionary<string, string> dictionaryItems))
+                // Dictionary to store cached or fetched dictionary data
+                // Attempt to retrieve dictionary data from cache, we will cache wither minword 2 or min word 3 dictionaries
+                if (!_memoryCache.TryGetValue($"{BasicDictionaryCacheKey}-{minwordlength}", out Dictionary<string, string> dictionaryItems))
                 {
                     dictionaryItems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -127,11 +136,14 @@ namespace Roachagram.API.Controllers
                         if (string.IsNullOrEmpty(word))
                             continue;
 
-                        dictionaryItems.TryAdd(word, ordered);
+                        if (word.Length >= minwordlength)
+                        {
+                            dictionaryItems.TryAdd(word, ordered);
+                        }
                     }
 
                     // Cache the fetched dictionary data
-                    _memoryCache.Set(BasicDictionaryCacheKey, dictionaryItems);
+                    _memoryCache.Set($"{BasicDictionaryCacheKey}-{minwordlength}", dictionaryItems);
                 }
 
                 // Generate anagrams using the business logic layer

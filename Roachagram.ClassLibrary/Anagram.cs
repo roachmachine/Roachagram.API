@@ -112,7 +112,7 @@ namespace Roachagram.ClassLibrary
                 // Recursively find anagrams with the remaining input text.
                 for (int index = KeyListIndex + 1; index < KeyList.Count; index++)
                 {
-                    if (Input.Length >= MinimumLengthOfWord && AnagramSubList.Count <= MaximumNumberOfWords)
+                    if (Input.Length >= MinimumLengthOfWord && AnagramSubList.Count < MaximumNumberOfWords)
                     {
                         List<string> ClonedAnagramSubList = [.. AnagramSubList.Select(w => w)];
                         ClonedAnagramSubList.Add(searchWord);
