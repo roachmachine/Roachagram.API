@@ -97,7 +97,7 @@ namespace Roachagram.API.Controllers
                 #endregion
 
                 // Adjust min word length and max num words based on input length           
-                if (input.Length >= 10)
+                if (input.Length >= 12)
                 {
                     minwordlength = 3;
                     maxnumwords = 2;
