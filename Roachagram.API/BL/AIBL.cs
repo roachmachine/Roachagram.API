@@ -27,48 +27,44 @@ namespace Roachagram.API.BL
 
         public async Task<string> GetAIResult(AnagramResult anagramResult)
         {
-            // Retrieve the OpenAI endpoint from environment variables
             var endpoint = _configuration["roach-machine-ai-foundry-open-ai-endpoint"];
             var key = _configuration["roach-machine-ai-foundry-key"];
 
             AzureKeyCredential credential = new(key);
-
-            // Initialize the AzureOpenAIClient
             AzureOpenAIClient azureClient = new(new Uri(endpoint), credential);
-
-            // Initialize the ChatClient with the specified deployment name
             ChatClient chatClient = azureClient.GetChatClient("gpt-4.1-mini-anagram");
 
-            // List of messages to send
+            // Create a simple array string for anagrams
+            string anagramsArrayString = "[" + string.Join(",", anagramResult.Anagrams.Select(a => $"\"{a}\"")) + "]";
+
             var messages = new List<ChatMessage>
             {
-                new SystemChatMessage(@"You are a fun anagram reviewer. You refer to yourself as ""Roachagram"".
-I will provide the input as well as the anagram words in JSON.
-You analyze the anagram in a casual way and provide a list
-with explanation for rare words. In the ending summary, pick your favorite few."),
-                new UserChatMessage($"{JsonSerializer.Serialize(anagramResult)}") };
-
-            // Create chat completion options
+                new SystemChatMessage(@"Call yourself Roachagram, a friendly and witty anagram reviewer. 
+                                        I’ll give you the original phrase and a list of anagram candidates. 
+                                        Your job:
+                                        1. React casually and make it fun.
+                                        2. For each anagram, give a short comment (why it’s cool, odd, or funny).
+                                        3. If a word seems rare or unusual, briefly explain it.
+                                        4. End with a quick summary: pick your top 2–3 favorites and say why."),
+                new UserChatMessage($"Input: \"{anagramResult.Input}\"\nAnagrams: {anagramsArrayString}")
+            };
 
             var options = new ChatCompletionOptions
             {
-                Temperature = (float)0.7,
-                MaxOutputTokenCount = 13107,
-                TopP = (float)0.95,
+                Temperature = 0.5f,
+                MaxOutputTokenCount = 700,
+                TopP = 0.95f,
                 FrequencyPenalty = 0,
-                PresencePenalty = 0                
+                PresencePenalty = 0
             };
 
             try
             {
-
-                // Create the chat completion request
                 ChatCompletion completion = await chatClient.CompleteChatAsync(messages, options);
 
-                // Print the response
                 if (completion != null)
                 {
-                    return JsonSerializer.Serialize(completion.Content.FirstOrDefault().Text, CachedJsonSerializerOptions);
+                    return completion.Content.FirstOrDefault().Text;
                 }
                 else
                 {

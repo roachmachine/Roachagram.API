@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -8,12 +8,10 @@ using System.Threading.Tasks;
 using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Roachagram.API.BL;
 using Roachagram.API.Models;
-using Roachagram.ClassLibrary;
 
 namespace Roachagram.API.Controllers
 {
@@ -39,7 +37,7 @@ namespace Roachagram.API.Controllers
         private const string BasicDictionaryCacheKey = "BasicEnglishDictionary";
         private const int DefaultMinWordLength = 2;
         private const int DefaultMaxNumWords = 3;
-        private const int MaxInputLetters = 15;
+        private const int MaxInputLetters = 20;
 
         //let's do a bigger word if
 
@@ -61,13 +59,6 @@ namespace Roachagram.API.Controllers
         {
             try
             {
-                
-                #region Validate Input
-                if (string.IsNullOrEmpty(input))
-                {
-                    input = DefaultInput;
-                }
-
                 input = input.ToLowerInvariant();
 
 #pragma warning disable SYSLIB1045
@@ -94,7 +85,6 @@ namespace Roachagram.API.Controllers
                 {
                     maxnumwords = DefaultMaxNumWords;
                 }
-                #endregion
 
                 // Adjust min word length and max num words based on input length           
                 if (input.Length >= 12)
@@ -103,6 +93,7 @@ namespace Roachagram.API.Controllers
                     maxnumwords = 2;
                 }
 
+
                 // Dictionary to store cached or fetched dictionary data
                 // Attempt to retrieve dictionary data from cache, we will cache wither minword 2 or min word 3 dictionaries
                 if (!_memoryCache.TryGetValue($"{BasicDictionaryCacheKey}-{minwordlength}", out Dictionary<string, string> dictionaryItems))
@@ -110,7 +101,7 @@ namespace Roachagram.API.Controllers
                     dictionaryItems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                     //get file from files directory
-                    string csvPath = Path.Combine(_env.ContentRootPath, "Files", "default-dictionary.csv");
+                    string csvPath = Path.Combine(_env.ContentRootPath, "Files", "smaller-dictionary.csv");
 
                     if (!System.IO.File.Exists(csvPath))
                     {
@@ -148,6 +139,13 @@ namespace Roachagram.API.Controllers
 
                 // Generate anagrams using the business logic layer
                 List<string> output = AnagramBL.GetAnagrams(input.Trim(), minwordlength, maxnumwords, dictionaryItems);
+
+                // Handle no anagrams found by going to more words and smaller word length (if possible)
+                if (output.Count == 0)
+                {
+                    //this may take some time for larger inputs
+                    output = AnagramBL.GetAnagrams(input.Trim(), DefaultMinWordLength, DefaultMaxNumWords, dictionaryItems);
+                }
 
                 // Remove the original input from the list (ignoring spaces and case)
                 output.RemoveAll(anagram => anagram.Replace(" ", "").Equals(input, StringComparison.OrdinalIgnoreCase));
@@ -213,7 +211,7 @@ namespace Roachagram.API.Controllers
                         return string.Join(" ", words.OrderBy(_ => rand.Next()));
                     })];
 
-                var distinctTop = finalAnagrams.Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToList();
+                var distinctTop = finalAnagrams.Distinct(StringComparer.OrdinalIgnoreCase).Take(7).ToList();
 
                 AnagramResult anagramResult = new()
                 {
@@ -231,9 +229,8 @@ namespace Roachagram.API.Controllers
                     {
                         ["AnagramInput"] = input,
                         ["AnagramCount"] = (anagramResult.Anagrams?.Count ?? 0).ToString(),
-                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(10))
+                        ["AnagramSample"] = string.Join(", ", (anagramResult.Anagrams ?? []).Take(7))
                     });
-
                 return response?.Trim('\"') ?? string.Empty;
             }
             catch (Exception ex)
