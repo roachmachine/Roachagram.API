@@ -59,6 +59,11 @@ namespace Roachagram.API.Controllers
         {
             try
             {
+                if (string.IsNullOrEmpty(input))
+                {
+                    input = DefaultInput;
+                }
+
                 input = input.ToLowerInvariant();
 
 #pragma warning disable SYSLIB1045
