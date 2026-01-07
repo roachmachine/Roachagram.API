@@ -20,6 +20,14 @@ namespace Roachagram.API.Middleware
 
         public async Task InvokeAsync(HttpContext context)
         {
+            // Skip rate limiting for health check endpoints
+            if (context.Request.Path.StartsWithSegments("/api/home", StringComparison.OrdinalIgnoreCase) ||
+                context.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
+            {
+                await _next(context);
+                return;
+            }
+
             // Retrieve the device ID from the request headers
             var deviceId = context.Request.Headers["X-Device-ID"].FirstOrDefault();
 
