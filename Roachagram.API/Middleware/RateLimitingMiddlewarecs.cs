@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Linq;
@@ -39,27 +39,28 @@ namespace Roachagram.API.Middleware
                 return;
             }
 
-            // Generate a unique cache key for the device ID
-            var cacheKey = $"RateLimit-{deviceId}";
+            // Build rate-limit keys.
+            // NOTE: RemoteIpAddress may be a proxy IP unless Forwarded Headers are configured.
+            var remoteIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var ipKey = $"RateLimitIp-{remoteIp}";
+            var ipDeviceKey = $"RateLimitIpDevice-{remoteIp}-{deviceId}";
 
-            // Check if the device ID is already in the cache
-            if (!_cache.TryGetValue(cacheKey, out _))
+            // If either the IP or IP+Device limit is active, reject the request.
+            if (_cache.TryGetValue(ipKey, out _) || _cache.TryGetValue(ipDeviceKey, out _))
             {
-                // If not in the cache, add it with a sliding expiration
-                var cacheEntryOptions = new MemoryCacheEntryOptions
-                {
-                    SlidingExpiration = _slidingExpiration
-                };
-
-                _cache.Set(cacheKey, true, cacheEntryOptions);
-            }
-            else
-            {
-                // If the device ID is in the cache, return a 429 Too Many Requests response
                 context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 await context.Response.WriteAsync("Rate limit exceeded. Please try again later.");
                 return;
             }
+
+            // Otherwise, set both keys with the same sliding expiration.
+            var cacheEntryOptions = new MemoryCacheEntryOptions
+            {
+                SlidingExpiration = _slidingExpiration
+            };
+
+            _cache.Set(ipKey, true, cacheEntryOptions);
+            _cache.Set(ipDeviceKey, true, cacheEntryOptions);
 
             // Proceed to the next middleware in the pipeline
             await _next(context);
