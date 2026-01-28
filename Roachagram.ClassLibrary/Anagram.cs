@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -35,11 +35,6 @@ namespace Roachagram.ClassLibrary
         private readonly List<string> KeyList = [];
 
         /// <summary>
-        /// Stores the running list of matched anagrams during processing.
-        /// </summary>
-        private readonly List<List<string>> runningListOfMatchedAnagrams = [];
-
-        /// <summary>
         /// Dictionary containing words and their possible anagrams.
         /// </summary>
         private readonly Dictionary<string, List<string>> Dictionary = [];
@@ -47,16 +42,16 @@ namespace Roachagram.ClassLibrary
         /// <summary>
         /// Initializes a new instance of the <see cref="Anagram"/> class with specified parameters.
         /// </summary>
-        /// <param name="InputText">The input text for generating anagrams.</param>
-        /// <param name="MinWordLength">The minimum length of a word in the anagram.</param>
-        /// <param name="MaxNumWords">The maximum number of words allowed in an anagram.</param>
-        /// <param name="AnagramDictionary">The dictionary used for anagram generation.</param>
-        public Anagram(string InputText, int MinWordLength, int MaxNumWords, Dictionary<string, List<string>> AnagramDictionary)
+        /// <param name="inputText">The input text for generating anagrams.</param>
+        /// <param name="minWordLength">The minimum length of a word in the anagram.</param>
+        /// <param name="maxNumWords">The maximum number of words allowed in an anagram.</param>
+        /// <param name="anagramDictionary">The dictionary used for anagram generation.</param>
+        public Anagram(string inputText, int minWordLength, int maxNumWords, Dictionary<string, List<string>> anagramDictionary)
         {
-            Input = InputText;
-            MinimumLengthOfWord = MinWordLength;
-            MaximumNumberOfWords = MaxNumWords;
-            Dictionary = AnagramDictionary;
+            Input = inputText;
+            MinimumLengthOfWord = minWordLength;
+            MaximumNumberOfWords = maxNumWords;
+            Dictionary = anagramDictionary ?? throw new ArgumentNullException(nameof(anagramDictionary));
             KeyList = [.. Dictionary.Keys];
             KeyList.Sort();
         }
@@ -67,56 +62,63 @@ namespace Roachagram.ClassLibrary
         /// <returns>A list of all valid anagrams.</returns>
         public List<string> GetAllAnagrams()
         {
-            string SortedInput = new([.. Input.OrderBy(c => c)]);
+            if (string.IsNullOrEmpty(Input))
+            {
+                return [];
+            }
+
+            string sortedInput = new([.. Input.OrderBy(c => c)]);
+
+            // Local list of matched anagram key sequences to keep the instance stateless across calls.
+            var runningListOfMatchedAnagrams = new List<List<string>>();
 
             // Iterate through the key list to find matching anagrams.
             for (int index = 0; index < KeyList.Count; index++)
             {
-                FindAnagrams(index, SortedInput, []);
+                FindAnagrams(index, sortedInput, new List<string>(), runningListOfMatchedAnagrams);
             }
 
             // Generate the final output list of anagrams.
-            List<string> FinalOutput = Output();
-            return FinalOutput;
+            return BuildOutput(runningListOfMatchedAnagrams);
         }
 
         /// <summary>
         /// Recursively finds anagrams by matching keys with the input text.
         /// </summary>
-        /// <param name="KeyListIndex">The current index in the key list.</param>
-        /// <param name="Input">The remaining input text to match.</param>
-        /// <param name="AnagramSubList">The current list of matched words forming an anagram.</param>
-        private void FindAnagrams(int KeyListIndex, string Input, List<string> AnagramSubList)
+        /// <param name="keyListIndex">The current index in the key list.</param>
+        /// <param name="remainingInput">The remaining input text to match.</param>
+        /// <param name="currentWords">The current list of matched words forming an anagram.</param>
+        /// <param name="matchedAnagramKeys">The accumulator for completed anagram key sequences.</param>
+        private void FindAnagrams(int keyListIndex, string remainingInput, List<string> currentWords, List<List<string>> matchedAnagramKeys)
         {
-            string searchWord = KeyList[KeyListIndex];
+            string searchWord = KeyList[keyListIndex];
 
-            // Check for an exact match with the input text.
-            if (Input.Equals(searchWord))
+            // Check for an exact match with the remaining input text.
+            if (remainingInput.Equals(searchWord, StringComparison.Ordinal))
             {
-                AnagramSubList.Add(searchWord);
-
-                // Add the completed anagram to the running list.
-                List<string> FinalList = [];
-                foreach (string s in AnagramSubList)
+                var completedAnagram = new List<string>(currentWords)
                 {
-                    FinalList.Add(s);
-                }
+                    searchWord
+                };
 
-                runningListOfMatchedAnagrams.Add(FinalList);
+                matchedAnagramKeys.Add(completedAnagram);
                 return;
             }
 
-            // Check if the search word can be formed from the input text.
-            if (IsContained(ref Input, searchWord))
+            // Check if the search word can be formed from the remaining input text.
+            if (TryRemoveLetters(remainingInput, searchWord, out string remainingAfterWord))
             {
                 // Recursively find anagrams with the remaining input text.
-                for (int index = KeyListIndex + 1; index < KeyList.Count; index++)
+                for (int index = keyListIndex + 1; index < KeyList.Count; index++)
                 {
-                    if (Input.Length >= MinimumLengthOfWord && AnagramSubList.Count < MaximumNumberOfWords)
+                    if (remainingAfterWord.Length >= MinimumLengthOfWord && currentWords.Count < MaximumNumberOfWords)
                     {
-                        List<string> ClonedAnagramSubList = [.. AnagramSubList.Select(w => w)];
-                        ClonedAnagramSubList.Add(searchWord);
-                        FindAnagrams(index, Input, ClonedAnagramSubList);
+                        var clonedWords = new List<string>(currentWords)
+                        {
+                            searchWord
+                        };
+
+                        FindAnagrams(index, remainingAfterWord, clonedWords, matchedAnagramKeys);
                     }
                     else
                     {
@@ -127,94 +129,104 @@ namespace Roachagram.ClassLibrary
         }
 
         /// <summary>
-        /// Determines whether the specified input contains all characters of the given word.
+        /// Attempts to remove the characters in <paramref name="word"/> from <paramref name="input"/>.
         /// </summary>
-        /// <param name="Input">The input text to check.</param>
-        /// <param name="RemoveList">The word to check against the input text.</param>
-        /// <returns><c>true</c> if the input contains all characters of the word; otherwise, <c>false</c>.</returns>
-        private static bool IsContained(ref string Input, string RemoveList)
+        /// <param name="input">The input text to consume characters from.</param>
+        /// <param name="word">The word whose characters should be removed.</param>
+        /// <param name="remaining">The remaining characters after removal, if successful.</param>
+        /// <returns><c>true</c> if all characters could be removed; otherwise, <c>false</c>.</returns>
+        private static bool TryRemoveLetters(string input, string word, out string remaining)
         {
-            string OriginalInput = Input;
-
-            foreach (char Letter in RemoveList.ToCharArray())
+            if (string.IsNullOrEmpty(word))
             {
-                if (!Input.Contains<char>(Letter))
-                {
-                    Input = OriginalInput;
-                    return false;
-                }
-                else
-                {
-                    // Remove the matched character from the input text.
-                    Input = Input.Remove(Input.IndexOf(Letter), 1);
-                }
+                remaining = input;
+                return true;
             }
 
+            var working = input;
+
+            foreach (char letter in word)
+            {
+                int index = working.IndexOf(letter);
+                if (index < 0)
+                {
+                    remaining = input;
+                    return false;
+                }
+
+                // Remove the matched character from the working input text.
+                working = working.Remove(index, 1);
+            }
+
+            remaining = working;
             return true;
         }
 
         /// <summary>
         /// Generates the final output list of anagrams after processing.
         /// </summary>
+        /// <param name="matchedKeySequences">The matched key sequences representing anagram structures.</param>
         /// <returns>A list of formatted anagrams.</returns>
-        private List<string> Output()
+        private List<string> BuildOutput(IEnumerable<List<string>> matchedKeySequences)
         {
-            List<string> OutputList = [];
-            List<FinalAnagram> FinalAnagrams = [];
+            List<string> outputList = [];
+            List<FinalAnagram> finalAnagrams = [];
 
-            // Helper function to generate combinations of words.
-            static IEnumerable<IEnumerable<string>> f0(IEnumerable<IEnumerable<string>> xss, IEnumerable<IEnumerable<string>> xss2)
+            // Helper function to generate combinations of words from each position's options.
+            static IEnumerable<IEnumerable<string>> GenerateCombinations(IReadOnlyList<IEnumerable<string>> wordOptionsPerPosition, int index = 0)
             {
-                if (!xss.Any())
+                if (index == wordOptionsPerPosition.Count)
                 {
-                    return [[]];
+                    yield return Enumerable.Empty<string>();
+                    yield break;
                 }
-                else
+
+                foreach (var word in wordOptionsPerPosition[index])
                 {
-                    var query =
-                        from x in xss.First()
-                        from y in f0(xss.Skip(1), xss)
-                        select new[] { x }.Concat(y);
-                    return query;
+                    foreach (var combination in GenerateCombinations(wordOptionsPerPosition, index + 1))
+                    {
+                        yield return new[] { word }.Concat(combination);
+                    }
                 }
             }
 
-            // Helper function to format combinations into strings.
-            static IEnumerable<string> f(IEnumerable<IEnumerable<string>> xss)
+            // Helper function to format combinations into space-separated strings.
+            static IEnumerable<string> BuildAnagramPhrases(IEnumerable<IEnumerable<string>> wordOptionsPerPosition)
             {
-                return f0(xss, xss).Select(xs => string.Join(" ", xs));
+                var optionsList = wordOptionsPerPosition.ToList();
+                return GenerateCombinations(optionsList).Select(words => string.Join(" ", words));
             }
 
-            List<string[][]> ListOfStringArrays = [];
+            List<string[][]> listOfStringArrays = [];
 
-            // Process each set of matched anagrams.
-            foreach (List<string> AnagramSet in runningListOfMatchedAnagrams)
+            // Process each set of matched anagram keys into their corresponding word options.
+            foreach (List<string> anagramSet in matchedKeySequences)
             {
                 int counter = 0;
-                string[][] Outer = new string[AnagramSet.Count][];
-                foreach (string s in AnagramSet)
+                string[][] outer = new string[anagramSet.Count][];
+                foreach (string key in anagramSet)
                 {
-                    string[] inner = [.. Dictionary[s]];
-                    Outer[counter] = inner;
+                    string[] inner = [.. Dictionary[key]];
+                    outer[counter] = inner;
                     counter++;
                 }
 
-                ListOfStringArrays.Add(Outer);
+                listOfStringArrays.Add(outer);
             }
 
             // Generate and filter the final list of anagrams.
-            foreach (var v in ListOfStringArrays)
+            foreach (var wordOptionsGrid in listOfStringArrays)
             {
-                var results = f(v);
+                var results = BuildAnagramPhrases(wordOptionsGrid);
                 foreach (var anagram in results)
                 {
-                    string[] SortedAnagram = anagram.Split(' ');
-                    if (SortedAnagram.Length <= MaximumNumberOfWords)
+                    string[] sortedAnagram = anagram.Split(' ');
+                    if (sortedAnagram.Length <= MaximumNumberOfWords)
                     {
                         bool minWordsPassed = true;
-                        foreach (string s in SortedAnagram)
+                        foreach (string word in sortedAnagram)
                         {
-                            if (s.Length < MinimumLengthOfWord)
+                            if (word.Length < MinimumLengthOfWord)
                             {
                                 minWordsPassed = false;
                                 break;
@@ -222,78 +234,72 @@ namespace Roachagram.ClassLibrary
                         }
                         if (minWordsPassed)
                         {
-                            Array.Sort(SortedAnagram);
-                            FinalAnagrams.Add(new FinalAnagram(string.Join(" ", SortedAnagram), SortedAnagram.Length));
+                            Array.Sort(sortedAnagram, StringComparer.Ordinal);
+                            finalAnagrams.Add(new FinalAnagram(string.Join(" ", sortedAnagram), sortedAnagram.Length));
                         }
                     }
                 }
             }
 
             // Sort and format the final list of anagrams.
-            FinalAnagrams.Sort();
-            foreach (FinalAnagram fa in FinalAnagrams)
+            finalAnagrams.Sort();
+            foreach (FinalAnagram fa in finalAnagrams)
             {
-                OutputList.Add(fa.Anagram);
+                outputList.Add(fa.Anagram);
             }
 
-            return OutputList;
+            return outputList;
         }
 
         /// <summary>
         /// Represents a final anagram with its word count for sorting and output purposes.
         /// </summary>
-        private class FinalAnagram(string StringAnagram, int NumberOfWords) : IComparable
+        private sealed class FinalAnagram : IComparable<FinalAnagram>
         {
+            /// <summary>
+            /// Initializes a new instance of the <see cref="FinalAnagram"/> class.
+            /// </summary>
+            /// <param name="stringAnagram">The formatted anagram string.</param>
+            /// <param name="numberOfWords">The number of words in the anagram.</param>
+            public FinalAnagram(string stringAnagram, int numberOfWords)
+            {
+                Anagram = stringAnagram;
+                WordCount = numberOfWords;
+            }
+
             /// <summary>
             /// Gets or sets the word count of the anagram.
             /// </summary>
-            public int WordCount { get; set; } = NumberOfWords;
+            public int WordCount { get; set; }
 
             /// <summary>
             /// Gets or sets the formatted anagram string.
             /// </summary>
-            public string Anagram { get; set; } = StringAnagram;
+            public string Anagram { get; set; }
 
             /// <summary>
-            /// Compares the current instance with another object of the same type for sorting.
+            /// Compares the current instance with another instance of the same type for sorting.
             /// </summary>
-            /// <param name="obj">The object to compare with this instance.</param>
+            /// <param name="other">The other <see cref="FinalAnagram"/> instance to compare with.</param>
             /// <returns>
             /// A value indicating the relative order of the objects being compared.
             /// </returns>
-            /// <exception cref="ArgumentException">Thrown when the parameter is not a FinalAnagram object.</exception>
-            public int CompareTo(object obj)
+            public int CompareTo(FinalAnagram other)
             {
-                if (obj is FinalAnagram temp)
+                if (other is null)
                 {
-                    // Sort by word count in descending order.
-                    if (WordCount > temp.WordCount)
-                    {
-                        return 1;
-                    }
-                    else if (WordCount < temp.WordCount)
-                    {
-                        return -1;
-                    }
-
-                    // Sort alphabetically if word counts are equal.
-                    int TempStringCompare = string.Compare(Anagram, temp.Anagram);
-                    if (TempStringCompare == 1)
-                    {
-                        return 1;
-                    }
-                    else if (TempStringCompare == -1)
-                    {
-                        return -1;
-                    }
-
-                    // Return 0 if tied.
-                    return 0;
+                    return 1;
                 }
-                else
+
+                // Sort by word count in descending order.
+                int wordCountComparison = other.WordCount.CompareTo(WordCount);
+                if (wordCountComparison != 0)
                 {
-                    throw new ArgumentException("Parameter is not an Anagram object");
+                    return wordCountComparison;
                 }
+
+                // Sort alphabetically if word counts are equal.
+                return string.Compare(Anagram, other.Anagram, StringComparison.Ordinal);
             }
         }
     }

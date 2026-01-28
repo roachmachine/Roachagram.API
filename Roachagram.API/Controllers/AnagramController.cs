@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -38,8 +38,6 @@ namespace Roachagram.API.Controllers
         private const int DefaultMinWordLength = 2;
         private const int DefaultMaxNumWords = 3;
         private const int MaxInputLetters = 20;
-
-        //let's do a bigger word if
 
         // Dependencies
         private readonly IMemoryCache _memoryCache = memoryCache;
@@ -105,8 +103,11 @@ namespace Roachagram.API.Controllers
                 {
                     dictionaryItems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-                    //get file from files directory
-                    string csvPath = Path.Combine(_env.ContentRootPath, "Files", "smaller-dictionary.csv");
+                // get file from files directory
+                // NOTE: "smaller-dictionary.csv" does not include some valid words (e.g. "charlie"),
+                // which prevents expected anagrams like "charlie macho" for input "michaelroach".
+                // Use the full dictionary by default.
+                string csvPath = Path.Combine(_env.ContentRootPath, "Files", "default-dictionary.csv");
 
                     if (!System.IO.File.Exists(csvPath))
                     {

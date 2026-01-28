@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Azure.Core;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Builder;
@@ -94,10 +94,10 @@ namespace Roachagram.API
             // Adds routing middleware to the request pipeline.
             app.UseRouting();
 
+            app.UseRateLimiting(TimeSpan.FromSeconds(5));
+
             // Adds authorization middleware to the request pipeline.
             app.UseAuthorization();
-
-            app.UseRateLimiting(TimeSpan.FromSeconds(5));
 
             // Configures the endpoints for the application.
             app.UseEndpoints(endpoints =>
